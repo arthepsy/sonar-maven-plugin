@@ -77,6 +77,8 @@ public class MavenProjectConverter
 
     private static final String MAVEN_PACKAGING_WAR = "war";
 
+    private static final String MAVEN_POM_XML = "pom.xml";
+
     public static final String ARTIFACT_MAVEN_WAR_PLUGIN = "org.apache.maven.plugins:maven-war-plugin";
 
     private final boolean includePomXml;
@@ -168,19 +170,32 @@ public class MavenProjectConverter
     private static MavenProject findMavenProject( final File modulePath, Map<String, MavenProject> paths )
         throws IOException
     {
-        if ( modulePath.exists() && modulePath.isDirectory() )
+        String canonicalModulePath = modulePath.getCanonicalPath();
+        if ( modulePath.exists() )
         {
-            for ( Map.Entry<String, MavenProject> entry : paths.entrySet() )
+            if ( modulePath.isDirectory() )
             {
-                String pomFileParentDir = new File( entry.getKey() ).getParent();
-                if ( pomFileParentDir.equals( modulePath.getCanonicalPath() ) )
+                String pomFile = new File( canonicalModulePath, MAVEN_POM_XML ).getCanonicalPath();
+                MavenProject project = paths.get(pomFile);
+                if ( project != null )
                 {
-                    return entry.getValue();
+                    return project;
+                }
+                else
+                {
+                    for ( Map.Entry<String, MavenProject> entry : paths.entrySet() )
+                    {
+                        String pomFileParentDir = new File( entry.getKey() ).getParent();
+                        if ( pomFileParentDir.equals( canonicalModulePath ) )
+                        {
+                            return entry.getValue();
+                        }
+                    }
+                    return null;
                 }
             }
-            return null;
         }
-        return paths.get( modulePath.getCanonicalPath() );
+        return paths.get( canonicalModulePath );
     }
 
     @VisibleForTesting
