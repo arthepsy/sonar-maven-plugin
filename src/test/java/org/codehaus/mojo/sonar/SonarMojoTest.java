@@ -187,7 +187,8 @@ public class SonarMojoTest
         mojo.execute();
 
         assertPropsContains( entry( "sonar.sources", new File( baseDir, "src/main/webapp" ).getAbsolutePath() + ","
-            + new File( baseDir, "src/main/java" ).getAbsolutePath() ) );
+            + new File( baseDir, "src/main/java" ).getAbsolutePath() + ","
+            + new File( baseDir, "src/main/scala" ).getAbsolutePath() ) );
     }
 
     @Test

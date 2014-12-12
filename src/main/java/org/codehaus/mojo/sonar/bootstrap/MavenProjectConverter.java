@@ -433,13 +433,30 @@ public class MavenProjectConverter
             sources.add( pom.getFile().getPath() );
         }
         sources.addAll( pom.getCompileSourceRoots() );
+        this.addCustomSources(pom, sources, "src/main/scala");
         return sourcePaths( pom, ScanProperties.PROJECT_SOURCE_DIRS, sources );
     }
 
     private List<File> testSources( MavenProject pom )
         throws MojoExecutionException
     {
-        return sourcePaths( pom, ScanProperties.PROJECT_TEST_DIRS, pom.getTestCompileSourceRoots() );
+        List<String> sources = new ArrayList<String>();
+        sources.addAll( pom.getTestCompileSourceRoots() );
+        this.addCustomSources(pom, sources, "src/test/scala");
+        return sourcePaths( pom, ScanProperties.PROJECT_TEST_DIRS, sources );
+    }
+
+    private void addCustomSources( MavenProject pom, List<String> sources, String relativePath )
+    {
+        File customSourcesPath = new File(pom.getBasedir(), relativePath);
+        if ( customSourcesPath.isDirectory() )
+        {
+            String customSourcesPathStr = customSourcesPath.getAbsolutePath();
+            if ( ! sources.contains(customSourcesPathStr) )
+            {
+                sources.add(customSourcesPathStr);
+            }
+        }
     }
 
     private List<File> sourcePaths( MavenProject pom, String propertyKey, List<String> mavenPaths )
