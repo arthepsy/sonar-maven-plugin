@@ -144,7 +144,7 @@ public class RunnerBootstraper
         throws MojoExecutionException
     {
         Properties props =
-            new MavenProjectConverter( server.supportsFilesAsSources(),
+            new MavenProjectConverter( log, server.supportsFilesAsSources(),
                                        new DependencyCollector( dependencyTreeBuilder, artifactFactory,
                                                                 localRepository, artifactMetadataSource,
                                                                 artifactCollector ) ).configure( session.getProjects(),
@@ -184,7 +184,7 @@ public class RunnerBootstraper
         }
         catch ( SecDispatcherException e )
         {
-            log.warn( "Unable to decrypt property " + key, e );
+            log.debug( "Unable to decrypt property " + key, e );
         }
     }
 }

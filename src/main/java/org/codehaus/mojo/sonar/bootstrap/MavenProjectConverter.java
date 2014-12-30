@@ -30,6 +30,7 @@ import org.apache.maven.model.CiManagement;
 import org.apache.maven.model.IssueManagement;
 import org.apache.maven.model.Scm;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
 import org.sonar.runner.api.RunnerProperties;
 import org.sonar.runner.api.ScanProperties;
@@ -42,12 +43,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 public class MavenProjectConverter
 {
+    private final Log log;
 
     private static final char SEPARATOR = ',';
 
@@ -79,14 +83,19 @@ public class MavenProjectConverter
 
     public static final String ARTIFACT_MAVEN_WAR_PLUGIN = "org.apache.maven.plugins:maven-war-plugin";
 
+    private static final String JAVA_PROJECT_BINARY_DIRS = "sonar.java.binaries";
+
+    private static final String JAVA_PROJECT_LIBRARIES = "sonar.java.libraries";
+
     private final boolean includePomXml;
 
     private Properties userProperties;
 
     private DependencyCollector dependencyCollector;
 
-    public MavenProjectConverter( boolean includePomXml, DependencyCollector dependencyCollector )
+    public MavenProjectConverter( Log log, boolean includePomXml, DependencyCollector dependencyCollector )
     {
+        this.log = log;
         this.includePomXml = includePomXml;
         this.dependencyCollector = dependencyCollector;
     }
@@ -129,9 +138,17 @@ public class MavenProjectConverter
         {
             throw new IllegalStateException( UNABLE_TO_DETERMINE_PROJECT_STRUCTURE_EXCEPTION_MESSAGE );
         }
-        for ( Map.Entry<Object, Object> prop : currentProps.entrySet() )
+        boolean skipped = "true".equals( currentProps.getProperty( "sonar.skip" ) );
+        if ( !skipped )
         {
-            properties.put( prefix + prop.getKey(), prop.getValue() );
+            for ( Map.Entry<Object, Object> prop : currentProps.entrySet() )
+            {
+                properties.put( prefix + prop.getKey(), prop.getValue() );
+            }
+        }
+        else
+        {
+            log.debug( "Module " + current + " skipped by property 'sonar.skip'" );
         }
         propsByModule.remove( current );
         List<String> moduleIds = new ArrayList<String>();
@@ -146,7 +163,7 @@ public class MavenProjectConverter
                 moduleIds.add( moduleId );
             }
         }
-        if ( !moduleIds.isEmpty() )
+        if ( !moduleIds.isEmpty() && !skipped )
         {
             properties.put( prefix + "sonar.modules", StringUtils.join( moduleIds, SEPARATOR ) );
         }
@@ -351,8 +368,10 @@ public class MavenProjectConverter
         }
         if ( !libraries.isEmpty() )
         {
-            props.setProperty( ScanProperties.PROJECT_LIBRARIES,
-                               StringUtils.join( toPaths( libraries ), SEPARATOR ) );
+            String librariesValue = StringUtils.join( toPaths( libraries ), SEPARATOR );
+            // Populate both deprecated and new property for backward compatibility
+            props.setProperty( ScanProperties.PROJECT_LIBRARIES, librariesValue );
+            props.setProperty( JAVA_PROJECT_LIBRARIES, librariesValue );
         }
     }
 
@@ -361,8 +380,10 @@ public class MavenProjectConverter
         File binaryDir = resolvePath( pom.getBuild().getOutputDirectory(), pom.getBasedir() );
         if ( binaryDir != null && binaryDir.exists() )
         {
-            props.setProperty( ScanProperties.PROJECT_BINARY_DIRS,
-                               binaryDir.getAbsolutePath() );
+            String binPath = binaryDir.getAbsolutePath();
+            // Populate both deprecated and new property for backward compatibility
+            props.setProperty( ScanProperties.PROJECT_BINARY_DIRS, binPath );
+            props.setProperty( JAVA_PROJECT_BINARY_DIRS, binPath );
         }
     }
 
@@ -390,7 +411,7 @@ public class MavenProjectConverter
         return null;
     }
 
-    static List<File> resolvePaths( List<String> paths, File basedir )
+    static List<File> resolvePaths( Collection<String> paths, File basedir )
     {
         List<File> result = Lists.newArrayList();
         for ( String path : paths )
@@ -407,7 +428,7 @@ public class MavenProjectConverter
     private List<File> mainSources( MavenProject pom )
         throws MojoExecutionException
     {
-        List<String> sources = new ArrayList<String>();
+        Set<String> sources = new LinkedHashSet<String>();
         if ( MAVEN_PACKAGING_WAR.equals( pom.getModel().getPackaging() ) )
         {
             sources.add( MavenUtils.getPluginSetting( pom, ARTIFACT_MAVEN_WAR_PLUGIN, "warSourceDirectory",
@@ -427,7 +448,7 @@ public class MavenProjectConverter
         return sourcePaths( pom, ScanProperties.PROJECT_TEST_DIRS, pom.getTestCompileSourceRoots() );
     }
 
-    private List<File> sourcePaths( MavenProject pom, String propertyKey, List<String> mavenPaths )
+    private List<File> sourcePaths( MavenProject pom, String propertyKey, Collection<String> mavenPaths )
         throws MojoExecutionException
     {
         List<String> paths;
@@ -456,7 +477,7 @@ public class MavenProjectConverter
             // Maven provides some directories that do not exist. They
             // should be removed. Same for pom module were sonar.sources and sonar.tests
             // can be defined only to be inherited by children
-            return keepExistingPaths( filesOrDirs );
+            return removeNested( keepExistingPaths( filesOrDirs ) );
         }
     }
 
@@ -488,6 +509,33 @@ public class MavenProjectConverter
                                                                     && fileOrDir.exists();
                                                             }
                                                         } ) );
+    }
+
+    private List<File> removeNested( List<File> originalPaths )
+    {
+        List<File> result = new ArrayList<File>();
+        for ( File maybeChild : originalPaths )
+        {
+            boolean hasParent = false;
+            for ( File possibleParent : originalPaths )
+            {
+                if ( isStrictChild( maybeChild, possibleParent ) )
+                {
+                    hasParent = true;
+                }
+            }
+            if ( !hasParent )
+            {
+                result.add( maybeChild );
+            }
+        }
+        return result;
+    }
+
+    boolean isStrictChild( File maybeChild, File possibleParent )
+    {
+        return maybeChild.getAbsolutePath().startsWith( possibleParent.getAbsolutePath() )
+            && !maybeChild.getAbsolutePath().equals( possibleParent.getAbsolutePath() );
     }
 
     private static String[] toPaths( Collection<File> dirs )
