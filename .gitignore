@@ -1,5 +1,5 @@
 # Maven
-target/
+/target/
 
 # IntelliJ IDEA
 *.iws
@@ -11,4 +11,6 @@ target/
 .classpath
 .project
 .settings
+
+*.swp
 
