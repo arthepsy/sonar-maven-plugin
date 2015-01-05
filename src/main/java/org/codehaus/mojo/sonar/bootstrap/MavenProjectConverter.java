@@ -85,6 +85,10 @@ public class MavenProjectConverter
 
     public static final String ARTIFACT_MAVEN_WAR_PLUGIN = "org.apache.maven.plugins:maven-war-plugin";
 
+    private static final String JAVA_PROJECT_BINARY_DIRS = "sonar.java.binaries";
+
+    private static final String JAVA_PROJECT_LIBRARIES = "sonar.java.libraries";
+
     private final boolean includePomXml;
 
     private Properties userProperties;
@@ -379,8 +383,10 @@ public class MavenProjectConverter
         }
         if ( !libraries.isEmpty() )
         {
-            props.setProperty( ScanProperties.PROJECT_LIBRARIES,
-                               StringUtils.join( toPaths( libraries ), SEPARATOR ) );
+            String librariesValue = StringUtils.join( toPaths( libraries ), SEPARATOR );
+            // Populate both deprecated and new property for backward compatibility
+            props.setProperty( ScanProperties.PROJECT_LIBRARIES, librariesValue );
+            props.setProperty( JAVA_PROJECT_LIBRARIES, librariesValue );
         }
     }
 
@@ -389,8 +395,10 @@ public class MavenProjectConverter
         File binaryDir = resolvePath( pom.getBuild().getOutputDirectory(), pom.getBasedir() );
         if ( binaryDir != null && binaryDir.exists() )
         {
-            props.setProperty( ScanProperties.PROJECT_BINARY_DIRS,
-                               binaryDir.getAbsolutePath() );
+            String binPath = binaryDir.getAbsolutePath();
+            // Populate both deprecated and new property for backward compatibility
+            props.setProperty( ScanProperties.PROJECT_BINARY_DIRS, binPath );
+            props.setProperty( JAVA_PROJECT_BINARY_DIRS, binPath );
         }
     }
 
